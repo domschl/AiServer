@@ -7,11 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
 class AiServer:
-    def __init__(self, port:int=8080):
+    def __init__(self, port:int=8080, num_workers:int=10):
         self.log: logging.Logger = logging.getLogger("AiServerComplianceWurschtelLogger")
         self.log.setLevel(logging.INFO)  # All important compliance info is logged!
         self.port: int = port
-        self.executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=10)  # Increased worker count
+        self.num_workers: int = num_workers
+        self.executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=self.num_workers)  # Increased worker count
         self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         self.app: web.Application = web.Application()
         _ = self.app.router.add_post('/task', self.handle_post)
