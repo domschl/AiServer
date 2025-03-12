@@ -11,7 +11,7 @@ from typing import cast
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 class AiServer:
-    def __init__(self, port:int=8080, num_workers:int=2):
+    def __init__(self, port:int=8080, num_workers:int=4, device:str="auto"):
         self.log: logging.Logger = logging.getLogger("AiServer")
         self.log.setLevel(logging.INFO)  # All important compliance info is logged!
         self.port: int = port
@@ -21,7 +21,7 @@ class AiServer:
         # Since thread-safety of those is very dubious at best, we have to create N copies of model and tokenizer!
         self.thread_id_map:list[int] = [0 for _ in range(self.num_workers)]
         self.log.info("Instantiating models...")
-        self.models: list[T5ForConditionalGeneration] = [T5ForConditionalGeneration.from_pretrained(model_name, device_map="auto") for _ in range(self.num_workers)]
+        self.models: list[T5ForConditionalGeneration] = [T5ForConditionalGeneration.from_pretrained(model_name, device_map=device) for _ in range(self.num_workers)]
         self.log.info("Instantiating tokenizers...")
         self.tokenizers: list[T5Tokenizer] = [T5Tokenizer.from_pretrained(model_name) for _ in range(self.num_workers)]
         self.log.info("Models and tokenizers loaded.")
@@ -30,7 +30,7 @@ class AiServer:
         self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         self.app: web.Application = web.Application()
         _ = self.app.router.add_post('/task', self.handle_post)
-        self.log.info("AiServer active")
+        self.log.info(f"AiServer active, using device {device}")
 
     # For translation example:
     def get_engine(self, thread_id: int) -> tuple[T5Tokenizer, T5ForConditionalGeneration] | None:
@@ -99,7 +99,7 @@ class AiServer:
         })
 
 async def main():
-    ai_server = AiServer()
+    ai_server = AiServer(device="auto")
     return ai_server.app
 
 if __name__ == '__main__':
