@@ -7,6 +7,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import torch
 from typing import cast
+from types import FrameType
+
 
 # For translation example:
 from transformers import T5ForConditionalGeneration, T5Tokenizer  # pyright: ignore[reportMissingTypeStubs]
@@ -111,12 +113,12 @@ async def main():
     ai_server = AiServer(num_workers=2, device="auto")
     return ai_server.app
 
-def handle_sighup(signum, frame):
+def handle_sighup(_signum: int, _frame: FrameType | None) -> None:
     logging.info("Received SIGHUP signal")
     asyncio.get_event_loop().stop()
 
 if __name__ == '__main__':
-    signal.signal(signal.SIGHUP, handle_sighup)
+    _ = signal.signal(signal.SIGHUP, handle_sighup)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     try:
         web.run_app(main())
