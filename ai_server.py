@@ -8,23 +8,27 @@ import torch
 from typing import cast
 
 # For translation example:
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import T5ForConditionalGeneration, T5Tokenizer  # pyright: ignore[reportMissingTypeStubs]
 
 class AiServer:
     def __init__(self, port:int=8080, num_workers:int=4, device:str="auto"):
+        # device: "auto" (fastest hardware), "cuda" (Nvidia), "mps" (Mac Metal), "cpu"
         self.log: logging.Logger = logging.getLogger("AiServer")
         self.log.setLevel(logging.INFO)  # All important compliance info is logged!
         self.port: int = port
         self.num_workers: int = num_workers
         # ----------- Start specific for Translation example
-        self.lock = threading.Lock()  # Create a lock for thread-safe access
-        model_name = 'jbochi/madlad400-3b-mt'
+        self.lock: threading.Lock = threading.Lock()  # Create a lock for thread-safe access
+        model_name:str = 'jbochi/madlad400-3b-mt'
         # Since thread-safety of those is very dubious at best, we have to create N copies of model and tokenizer!
-        self.thread_id_map:list[int] = [0 for _ in range(self.num_workers)]
-        self.log.info("Instantiating models...")
-        self.models: list[T5ForConditionalGeneration] = [T5ForConditionalGeneration.from_pretrained(model_name, device_map=device) for _ in range(self.num_workers)]
-        self.log.info("Instantiating tokenizers...")
-        self.tokenizers: list[T5Tokenizer] = [T5Tokenizer.from_pretrained(model_name) for _ in range(self.num_workers)]
+        self.thread_id_map:list[int] = []
+        self.models: list[T5ForConditionalGeneration] = []
+        self.tokenizers: list[T5Tokenizer] = []
+        self.log.info("Instantiating models and tokenizers...")
+        for _ in range(self.num_workers):
+            self.thread_id_map.append(0)
+            self.models.append(T5ForConditionalGeneration.from_pretrained(model_name, device_map=device)) # pyright: ignore[reportUnknownMemberType]
+            self.tokenizers.append(T5Tokenizer.from_pretrained(model_name))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         self.log.info("Models and tokenizers loaded.")
         # ----------- End specific for translation example
         self.executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=self.num_workers)  # Increased worker count
@@ -68,9 +72,10 @@ class AiServer:
         tokenizer = eng[0]
         model = eng[1]
         text = f"<2{job_desc['language_code']}> {job_desc['text']}"
-        input_ids: torch.Tensor = tokenizer(text, return_tensors="pt").input_ids.to(model.device)
-        outputs = model.generate(input_ids=input_ids)
-        translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        input_ret = tokenizer(text=text, return_tensors="pt")  # pyright: ignore[reportArgumentType]
+        input_ids: torch.Tensor = cast(torch.Tensor, input_ret.input_ids.to(model.device))  # pyright: ignore[reportUnknownMemberType]
+        outputs = model.generate(input_ids=input_ids)  # pyright: ignore[reportUnknownMemberType]
+        translation = tokenizer.decode(outputs[0], skip_special_tokens=True)  # pyright: ignore[reportArgumentType, reportUnknownMemberType]
         # ====================================================
         result = {
             "name": job_desc['name'],
