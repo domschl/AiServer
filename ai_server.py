@@ -17,6 +17,7 @@ class AiServer:
         self.port: int = port
         self.num_workers: int = num_workers
         # ----------- Start specific for Translation example
+        self.lock = threading.Lock()  # Create a lock for thread-safe access
         model_name = 'jbochi/madlad400-3b-mt'
         # Since thread-safety of those is very dubious at best, we have to create N copies of model and tokenizer!
         self.thread_id_map:list[int] = [0 for _ in range(self.num_workers)]
@@ -34,17 +35,18 @@ class AiServer:
 
     # For translation example:
     def get_engine(self, thread_id: int) -> tuple[T5Tokenizer, T5ForConditionalGeneration] | None:
-        empty_id: int = -1
-        for ind, id in enumerate(self.thread_id_map):
-            if id == thread_id:
-                return (self.tokenizers[ind], self.models[ind])
-            if id == 0:
-                empty_id = ind
-        if empty_id == -1:
-            self.log.error(f"Cannot identify engine for thread_id {thread_id}")
-            return None
-        self.thread_id_map[empty_id] = thread_id
-        return (self.tokenizers[empty_id], self.models[empty_id])
+        with self.lock:  # Acquire the lock before accessing shared resources
+            empty_id: int = -1
+            for ind, id in enumerate(self.thread_id_map):
+                if id == thread_id:
+                    return (self.tokenizers[ind], self.models[ind])
+                if id == 0:
+                    empty_id = ind
+            if empty_id == -1:
+                self.log.error(f"Cannot identify engine for thread_id {thread_id}")
+                return None
+            self.thread_id_map[empty_id] = thread_id
+            return (self.tokenizers[empty_id], self.models[empty_id])
 
     def ai_worker(self, job_desc: dict[str, str|int|float]):
         thread_id = threading.get_ident()
@@ -85,7 +87,6 @@ class AiServer:
 
     async def handle_post(self, request: web.Request) -> web.Response:
         job_desc: dict[str, str|int|float] = cast(dict[str, str|int|float], await request.json())
-        job_desc["name"] = "Hotzenplot-task"
         
         result, status = await self.loop.run_in_executor(
             self.executor, 
@@ -99,7 +100,7 @@ class AiServer:
         })
 
 async def main():
-    ai_server = AiServer(device="auto")
+    ai_server = AiServer(num_workers=2, device="auto")
     return ai_server.app
 
 if __name__ == '__main__':
