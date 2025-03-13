@@ -1,4 +1,5 @@
 import logging
+import signal
 import asyncio
 from aiohttp import web
 import time
@@ -25,10 +26,12 @@ class AiServer:
         self.models: list[T5ForConditionalGeneration] = []
         self.tokenizers: list[T5Tokenizer] = []
         self.log.info("Instantiating models and tokenizers...")
-        for _ in range(self.num_workers):
+        for i in range(self.num_workers):
+            print(f"\rLoading {i+1}/{self.num_workers}...", end="", flush=True)
             self.thread_id_map.append(0)
             self.models.append(T5ForConditionalGeneration.from_pretrained(model_name, device_map=device)) # pyright: ignore[reportUnknownMemberType]
             self.tokenizers.append(T5Tokenizer.from_pretrained(model_name))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        print("\r", end="", flush=True)
         self.log.info("Models and tokenizers loaded.")
         # ----------- End specific for translation example
         self.executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=self.num_workers)  # Increased worker count
@@ -108,10 +111,23 @@ async def main():
     ai_server = AiServer(num_workers=2, device="auto")
     return ai_server.app
 
+def handle_sighup(signum, frame):
+    logging.info("Received SIGHUP signal")
+    asyncio.get_event_loop().stop()
+
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    signal.signal(signal.SIGHUP, handle_sighup)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     try:
         web.run_app(main())
     except KeyboardInterrupt:
         pass
+    except asyncio.CancelledError:
+        logging.info("Cancelled")
+        pass
+    except Exception as e:
+        logging.error(f"Unhandled exception: {e}")
+    finally:
+        pass
+    logging.info("Shutting down server...")
 
